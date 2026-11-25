@@ -1,0 +1,41 @@
+name: Dependency Radar dry run
+on:
+  workflow_dispatch:
+    inputs:
+      owner:
+        description: Public GitHub account
+        required: true
+        default: ErmachenkoBoris
+      dependencies:
+        description: Comma-separated npm package names
+        required: true
+        default: '@angular/core,typescript,react'
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GITHUB_OWNER: ${{ inputs.owner }}
+      DEPENDENCIES: ${{ inputs.dependencies }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build && npm test
+      - run: ./node_modules/.bin/tsc -p testing/github
+      - run: node testing/github/.build/testing/github/run.js
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-radar-github
+          path: testing/github/report/
+          if-no-files-found: warn
+          retention-days: 14
