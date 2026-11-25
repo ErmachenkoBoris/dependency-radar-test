@@ -35,6 +35,8 @@ jobs:
       - run: npm run build && npm test
       - run: ./node_modules/.bin/tsc -p testing/github
       - id: scan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node testing/github/.build/testing/github/run.js
       - id: upload
         if: always()
