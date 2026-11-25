@@ -17,7 +17,7 @@ async function main() {
   try {
     console.log("Публичных активных репозиториев: " + repos.length)
     const results = await scanRepositories(githubSource(scratch), repos, names)
-    const scope = "GitHub · " + owner
+    const scope = "Публичные неархивные репозитории GitHub · " + owner
     const packages = aggregate(names, results)
     const markdown = summary(scope, results, packages, { label: "Проекты и манифесты", url: "projects.md" })
     mkdirSync("testing/github/report", { recursive: true })
