@@ -9,3 +9,5 @@ declare module "node:fs/promises" {
   export function mkdtemp(prefix: string): Promise<string>
   export function rm(path: string, options: { recursive: boolean; force: boolean }): Promise<void>
 }
+
+declare module "node:fs" { export function appendFileSync(path: string, data: string): void }

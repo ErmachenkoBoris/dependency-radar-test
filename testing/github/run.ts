@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -22,6 +23,10 @@ async function main() {
     mkdirSync("testing/github/report", { recursive: true })
     writeFileSync("testing/github/report/summary.md", markdown)
     writeFileSync("testing/github/report/projects.md", details(scope, results, packages))
+    if (process.env.GITHUB_OUTPUT) {
+      const key = createHash("sha256").update(JSON.stringify(names)).digest("hex").slice(0, 12)
+      appendFileSync(process.env.GITHUB_OUTPUT, "page=Radar-" + owner.toLowerCase() + "-" + key + "\n")
+    }
     console.log(markdown)
     if (results.some(r => r.errors.length)) process.exitCode = 1
   } finally {

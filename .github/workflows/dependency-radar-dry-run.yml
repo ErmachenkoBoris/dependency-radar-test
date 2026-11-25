@@ -1,4 +1,4 @@
-name: Dependency Radar dry run
+name: Dependency Radar
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +17,9 @@ permissions:
 jobs:
   dry-run:
     runs-on: ubuntu-latest
+    outputs:
+      page: ${{ steps.scan.outputs.page }}
+      artifact_url: ${{ steps.upload.outputs.artifact-url }}
     timeout-minutes: 45
     env:
       GITHUB_OWNER: ${{ inputs.owner }}
@@ -31,11 +34,66 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build && npm test
       - run: ./node_modules/.bin/tsc -p testing/github
-      - run: node testing/github/.build/testing/github/run.js
-      - if: always()
+      - id: scan
+        run: node testing/github/.build/testing/github/run.js
+      - id: upload
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dependency-radar-github
           path: testing/github/report/
           if-no-files-found: warn
           retention-days: 14
+
+  publish-wiki:
+    needs: dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the wiki
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          ref: master
+          path: wiki
+      - name: Download this run's report
+        uses: actions/download-artifact@v4
+        with:
+          name: dependency-radar-github
+          path: report
+      - name: Publish the summary
+        working-directory: wiki
+        env:
+          PAGE: ${{ needs.dry-run.outputs.page }}
+          ARTIFACT_URL: ${{ needs.dry-run.outputs.artifact_url }}
+        run: |
+          set -euo pipefail
+          [[ "$PAGE" =~ ^Radar-[a-z0-9-]+-[0-9a-f]{12}$ ]]
+          test -n "$ARTIFACT_URL"
+          page_file="$PAGE.md"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3; do
+            git fetch --depth=1 origin master
+            git checkout --detach FETCH_HEAD
+            previous=0
+            if [[ -f "$page_file" ]]; then
+              previous=$(sed -n 's/^<!-- radar-run=\([0-9]*\) -->$/\1/p' "$page_file")
+            fi
+            if (( previous > GITHUB_RUN_ID )); then
+              echo 'A newer report is already published.'
+              exit 0
+            fi
+            sed "s|(projects.md)$|($ARTIFACT_URL)|" ../report/summary.md > "$page_file"
+            printf '\n[Запуск GitHub Actions](%s)\n\n<!-- radar-run=%s -->\n' "$run_url" "$GITHUB_RUN_ID" >> "$page_file"
+            git add -- "$page_file"
+            if git diff --cached --quiet; then break; fi
+            git commit -m "Update $PAGE from run $GITHUB_RUN_ID"
+            if git push origin HEAD:master; then break; fi
+            if [[ "$attempt" == 3 ]]; then exit 1; fi
+            sleep "$attempt"
+          done
+          echo "[Открыть сводку в Wiki]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/wiki/$PAGE)" >> "$GITHUB_STEP_SUMMARY"
